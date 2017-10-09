@@ -30,10 +30,21 @@ def build_query(args):
     else:
         query = args.query
 
+    if args.author:
+        for author in args.author:
+            query += " " + author
+
+    if args.year:
+        query += f" year:{str(args.year)}:"
+
+    if args.venue:
+        query += f" venue:{args.venue}:"
+
     if args.conf:
-        query += " conference"
-    elif args.journal:
-        query += " journal"
+        query += " type:Conference_and_Workshop_Papers:"
+
+    if args.journal:
+        query += " type:Journal_Articles:"
 
     return query
 
@@ -66,11 +77,18 @@ def get_bib_text(url):
 
 def main():
     parser = argparse.ArgumentParser(description="Copy bibtex entry from DBLP")
+    parser.add_argument("-f", "--file", action="store_true",
+                        help="interpret query as file path")
     parser.add_argument("query", type=str)
-    parser.add_argument("-f", "--file", action="store_true")
-    option_group = parser.add_mutually_exclusive_group()
-    option_group.add_argument("-c", "--conf", action="store_true")
-    option_group.add_argument("-j", "--journal", action="store_true")
+    refine_group = parser.add_argument_group(title="Refine list")
+    refine_group.add_argument("-a", "--author", action="append")
+    refine_group.add_argument("-y", "--year", type=int)
+    refine_group.add_argument("-v", "--venue", type=str)
+    type_group = refine_group.add_mutually_exclusive_group()
+    type_group.add_argument("-c", "--conf", action="store_true",
+                            help="Conference and Workshop Papers")
+    type_group.add_argument("-j", "--journal", action="store_true",
+                            help="Journal Articles")
 
     exit_status = 1
 
