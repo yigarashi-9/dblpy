@@ -11,6 +11,38 @@ import requests
 from .exceptions import *
 
 
+class Query:
+    def __init__(self, args):
+        if args.file:
+            self.title = extract_title_from_pdf(args.query)
+        else:
+            self.title = args.query
+
+        self.author = args.author
+        self.year = args.year
+        self.venue = args.venue
+        self.conf = args.conf
+        self.journal = args.journal
+
+
+    def __str__(self):
+        s = self.title
+
+        for author in self.author:
+            s += " " + author
+
+        s += f" year:{str(self.year)}:" if self.year else ""
+        s += f" venue:{self.venue}:" if self.venue else ""
+
+        if self.conf:
+            s += " type:Conference_and_Workshop_Papers:"
+
+        if self.journal:
+            s += " type:Journal_Articles:"
+
+        return s
+
+
 def extract_title_from_pdf(path):
     if not os.path.isfile(path):
         raise NoFileExistsError(path)
@@ -24,35 +56,10 @@ def extract_title_from_pdf(path):
     return info.title
 
 
-def build_query(args):
-    if args.file:
-        query = extract_title_from_pdf(args.query)
-    else:
-        query = args.query
-
-    if args.author:
-        for author in args.author:
-            query += " " + author
-
-    if args.year:
-        query += f" year:{str(args.year)}:"
-
-    if args.venue:
-        query += f" venue:{args.venue}:"
-
-    if args.conf:
-        query += " type:Conference_and_Workshop_Papers:"
-
-    if args.journal:
-        query += " type:Journal_Articles:"
-
-    return query
-
-
 def get_bib_page_url(query):
     try:
         search_result_html = requests.get(
-            "http://dblp.uni-trier.de/search?q=" + urllib.parse.quote(query)).text
+            "http://dblp.uni-trier.de/search?q=" + urllib.parse.quote(str(query))).text
     except:
         raise HttpGetError()
 
@@ -93,7 +100,7 @@ def main():
     exit_status = 1
 
     try:
-        query = build_query(parser.parse_args())
+        query = Query(parser.parse_args())
         bib_page_url = get_bib_page_url(query)
         bibtext = get_bib_text(bib_page_url)
         pyperclip.copy(bibtext)
@@ -107,6 +114,6 @@ def main():
     except NoTitleExistsError as err:
         sys.stderr.write(f"No title info is found in {err.path}")
     except NoMatchError as err:
-        sys.stderr.write(f"No matches for \"{err.query}\".")
+        sys.stderr.write(f"No matches for \"{str(err.query)}\".")
 
     return exit_status
