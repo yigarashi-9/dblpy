@@ -3,7 +3,8 @@ class Error(Exception):
 
 
 class HttpGetError(Error):
-    pass
+    def __init__(self, url):
+        self.url = url
 
 
 class FileError(Error):
