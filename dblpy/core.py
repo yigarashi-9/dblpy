@@ -28,8 +28,9 @@ class Query:
     def __str__(self):
         s = self.title
 
-        for author in self.author:
-            s += " " + author
+        if self.author:
+            for author in self.author:
+                s += " " + author
 
         s += f" year:{str(self.year)}:" if self.year else ""
         s += f" venue:{self.venue}:" if self.venue else ""
@@ -50,7 +51,7 @@ def extract_title_from_pdf(path):
     f = open(path, 'rb')
     info = PdfFileReader(f).getDocumentInfo()
 
-    if info is None or info.title is None:
+    if info is None or info.title is None or info.title == "":
         raise NoTitleExistsError(path)
 
     return info.title
