@@ -2,31 +2,32 @@ import argparse
 import logging
 import os
 import sys
+from typing import cast, BinaryIO, List
 import urllib.parse
 
-from lxml import html
-from PyPDF2 import PdfFileReader
-import pyperclip
+from lxml import html  # type: ignore
+from PyPDF2 import PdfFileReader  # type: ignore
+import pyperclip  # type: ignore
 import requests
 
 from .exceptions import *
 
 
 class Query:
-    def __init__(self, args, logger):
+    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
         if args.file:
-            self.title = extract_title_from_pdf(args.query, logger)
+            self.title = extract_title_from_pdf(args.query, logger)  # type: str
         else:
             self.title = args.query
 
-        self.author = args.author
-        self.year = args.year
-        self.venue = args.venue
-        self.conf = args.conf
-        self.journal = args.journal
+        self.author = args.author  # type: List[str]
+        self.year = args.year  # type: int
+        self.venue = args.venue  # type: str
+        self.conf = args.conf  # type: bool
+        self.journal = args.journal  # type: bool
 
 
-    def __str__(self):
+    def __str__(self) -> str:
         s = self.title
 
         if self.author:
@@ -45,11 +46,11 @@ class Query:
         return s
 
 
-def extract_title_from_pdf(path, logger):
+def extract_title_from_pdf(path: str, logger: logging.Logger) -> str:
     if not os.path.isfile(path):
         raise NoFileExistsError(path)
 
-    f = open(path, 'rb')
+    f: BinaryIO  = open(path, 'rb')
     logger.info("Parsing pdf: " + path)
     info = PdfFileReader(f, strict=False).getDocumentInfo()
 
@@ -60,7 +61,7 @@ def extract_title_from_pdf(path, logger):
     return info.title
 
 
-def download_html(url):
+def download_html(url: str, logger: logging.Logger) -> str:
     try:
         logger.info("Sending a request: " + url)
         return requests.get(url).text
@@ -68,23 +69,23 @@ def download_html(url):
         raise HttpGetError(url)
 
 
-def get_bib_page_url(query, logger):
+def get_bib_page_url(query: Query, logger: logging.Logger) -> str:
     url = "http://dblp.uni-trier.de/search?q=" + urllib.parse.quote(str(query))
-    root = html.fromstring(download_html(url))
+    root = html.fromstring(download_html(url, logger))
     node_of_entries = root.xpath("//*[@class=\"publ\"]/ul/li[2]/div[1]/a")
 
     if len(node_of_entries) == 0:
         raise NoMatchError(query)
 
-    preturn node_of_entries[0].attrib["href"]
+    return node_of_entries[0].attrib["href"]
 
 
-def get_bib_text(url, logger):
-    root = html.fromstring(download_html(url))
+def get_bib_text(url: str, logger: logging.Logger) -> str:
+    root = html.fromstring(download_html(url, logger))
     return root.xpath("//*[@id=\"bibtex-section\"]/pre[1]")[0].text
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Copy bibtex entry from DBLP")
     parser.add_argument("-f", "--file", action="store_true",
                         help="interpret query as file path")
@@ -103,27 +104,27 @@ def build_parser():
     return parser
 
 
-def main():
-    logger = logging.getLogger(__name__)
-    handler = logging.StreamHandler(stream=sys.stdout)
-    formatter = logging.Formatter()
+def main() -> int:
+    logger: logging.Logger = logging.getLogger(__name__)
+    handler: logging.Handler = logging.StreamHandler(stream=sys.stdout)
+    formatter: logging.Formatter = logging.Formatter()
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    parser = build_parser()
-    exit_status = 1
+    parser: argparse.ArgumentParser = build_parser()
+    exit_status: int = 1
 
     try:
-        args = parser.parse_args()
+        args: argparse.Namespace = parser.parse_args()
 
         if args.info:
             logger.setLevel(logging.INFO)
             handler.setLevel(logging.INFO)
 
-        query = Query(args, logger)
+        query: Query = Query(args, logger)
         logger.info("Building a query: " + str(query))
-        bib_page_url = get_bib_page_url(query, logger)
-        bibtext = get_bib_text(bib_page_url, logger)
+        bib_page_url: str = get_bib_page_url(query, logger)
+        bibtext: str = get_bib_text(bib_page_url, logger)
         pyperclip.copy(bibtext)
         print("Copied to the clipboard:")
         print(bibtext)
