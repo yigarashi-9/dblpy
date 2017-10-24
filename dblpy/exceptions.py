@@ -3,23 +3,10 @@ class Error(Exception):
 
 
 class HttpGetError(Error):
-    def __init__(self, url):
+    def __init__(self, url: str) -> None:
         self.url = url
 
 
-class FileError(Error):
-    def __init__(self, path):
+class NoFileExistsError(Error):
+    def __init__(self, path: str) -> None:
         self.path = path
-
-
-class NoFileExistsError(FileError):
-    pass
-
-
-class NoTitleExistsError(FileError):
-    pass
-
-
-class NoMatchError(Error):
-    def __init__(self, query):
-        self.query = query

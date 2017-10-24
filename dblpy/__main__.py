@@ -1,9 +1,9 @@
 import sys
 
 
-def main():
-    from .core import main
-    sys.exit(main())
+def main() -> None:
+    from .core import _main
+    sys.exit(_main())
 
 
 if __name__ == "__main__":

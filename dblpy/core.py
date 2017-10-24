@@ -2,63 +2,15 @@ import argparse
 import logging
 import os
 import sys
-from typing import cast, BinaryIO, List
+from typing import cast, List, Optional
 import urllib.parse
 
 from lxml import html  # type: ignore
-from PyPDF2 import PdfFileReader  # type: ignore
 import pyperclip  # type: ignore
 import requests
 
 from .exceptions import *
-
-
-class Query:
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
-        if args.file:
-            self.title = extract_title_from_pdf(args.query, logger)  # type: str
-        else:
-            self.title = args.query
-
-        self.author = args.author  # type: List[str]
-        self.year = args.year  # type: int
-        self.venue = args.venue  # type: str
-        self.conf = args.conf  # type: bool
-        self.journal = args.journal  # type: bool
-
-
-    def __str__(self) -> str:
-        s = self.title
-
-        if self.author:
-            for author in self.author:
-                s += " " + author
-
-        s += f" year:{str(self.year)}:" if self.year else ""
-        s += f" venue:{self.venue}:" if self.venue else ""
-
-        if self.conf:
-            s += " type:Conference_and_Workshop_Papers:"
-
-        if self.journal:
-            s += " type:Journal_Articles:"
-
-        return s
-
-
-def extract_title_from_pdf(path: str, logger: logging.Logger) -> str:
-    if not os.path.isfile(path):
-        raise NoFileExistsError(path)
-
-    f: BinaryIO  = open(path, 'rb')
-    logger.info("Parsing pdf: " + path)
-    info = PdfFileReader(f, strict=False).getDocumentInfo()
-
-    if info is None or info.title is None or info.title == "":
-        raise NoTitleExistsError(path)
-
-    logger.info("Extracted title: " + info.title)
-    return info.title
+from .query import Query
 
 
 def download_html(url: str, logger: logging.Logger) -> str:
@@ -69,13 +21,13 @@ def download_html(url: str, logger: logging.Logger) -> str:
         raise HttpGetError(url)
 
 
-def get_bib_page_url(query: Query, logger: logging.Logger) -> str:
+def get_bib_page_url(query: Query, logger: logging.Logger) -> Optional[str]:
     url = "http://dblp.uni-trier.de/search?q=" + urllib.parse.quote(str(query))
     root = html.fromstring(download_html(url, logger))
     node_of_entries = root.xpath("//*[@class=\"publ\"]/ul/li[2]/div[1]/a")
 
     if len(node_of_entries) == 0:
-        raise NoMatchError(query)
+        return None
 
     return node_of_entries[0].attrib["href"]
 
@@ -104,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
+def _main() -> int:
     logger: logging.Logger = logging.getLogger(__name__)
     handler: logging.Handler = logging.StreamHandler(stream=sys.stdout)
     formatter: logging.Formatter = logging.Formatter()
@@ -112,7 +64,7 @@ def main() -> int:
     logger.addHandler(handler)
 
     parser: argparse.ArgumentParser = build_parser()
-    exit_status: int = 1
+    exit_status : int = 0
 
     try:
         args: argparse.Namespace = parser.parse_args()
@@ -122,20 +74,27 @@ def main() -> int:
             handler.setLevel(logging.INFO)
 
         query: Query = Query(args, logger)
+
+        if query.title is None:
+            print("No title info: " + args.query)
+            return exit_status
+
         logger.info("Building a query: " + str(query))
-        bib_page_url: str = get_bib_page_url(query, logger)
+        bib_page_url: Optional[str] = get_bib_page_url(query, logger)
+
+        if bib_page_url is None:
+            print("No matches: " + str(query))
+            return exit_status
+
         bibtext: str = get_bib_text(bib_page_url, logger)
         pyperclip.copy(bibtext)
         print("Copied to the clipboard:")
         print(bibtext)
-        exit_status = 0
     except HttpGetError as err:
         sys.stderr.write("Failed to access: " + err.url)
+        exit_status = 1
     except NoFileExistsError as err:
         sys.stderr.write("No such file: " + err.path)
-    except NoTitleExistsError as err:
-        sys.stderr.write("No title info: " + err.path)
-    except NoMatchError as err:
-        sys.stderr.write("No matches: " + str(err.query))
+        exit_status = 1
 
     return exit_status
