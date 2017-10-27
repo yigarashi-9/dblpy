@@ -5,7 +5,7 @@ import sys
 from typing import cast, List, Optional
 import urllib.parse
 
-from lxml import html  # type: ignore
+from lxml import etree, html  # type: ignore
 import pyperclip  # type: ignore
 import requests
 
@@ -13,7 +13,7 @@ from .exceptions import *
 from .query import Query
 
 
-def download_html(url: str, logger: logging.Logger) -> str:
+def download(url: str, logger: logging.Logger) -> str:
     try:
         logger.info("Sending a request: " + url)
         return requests.get(url).text
@@ -22,18 +22,18 @@ def download_html(url: str, logger: logging.Logger) -> str:
 
 
 def get_bib_page_url(query: Query, logger: logging.Logger) -> Optional[str]:
-    url = "http://dblp.uni-trier.de/search?q=" + urllib.parse.quote(str(query))
-    root = html.fromstring(download_html(url, logger))
-    node_of_entries = root.xpath("//*[@class=\"publ\"]/ul/li[2]/div[1]/a")
+    url = "http://dblp.org/search/publ/api?q=" + urllib.parse.quote(str(query))
+    root = etree.fromstring(download(url, logger).encode('utf-8'))
+    node_of_entries = root.xpath("/result/hits")
 
     if len(node_of_entries) == 0:
         return None
 
-    return node_of_entries[0].attrib["href"]
+    return node_of_entries[0].xpath("hit/info/url")[0].text.replace("rec", "rec/bibtex", 1)
 
 
 def get_bib_text(url: str, logger: logging.Logger) -> str:
-    root = html.fromstring(download_html(url, logger))
+    root = html.fromstring(download(url, logger))
     return root.xpath("//*[@id=\"bibtex-section\"]/pre[1]")[0].text
 
 
