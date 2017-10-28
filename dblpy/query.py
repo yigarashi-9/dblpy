@@ -1,17 +1,19 @@
 import argparse
 import logging
 import os
-from typing import BinaryIO, List, Optional
+from typing import BinaryIO, Optional
+import urllib.parse
 
 from PyPDF2 import PdfFileReader  # type: ignore
 
-from .exceptions import *
+from .exceptions import NoFileExistsError
 
 
-class Query:
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
+class DblpQuery:
+    def __init__(self, args: argparse.Namespace,
+                 logger: logging.Logger) -> None:
         if args.file:
-            self.title = self.extract_title_from_pdf(args.query, logger)  # type: Optional[str]
+            self.title = self.extract_title_from_pdf(args.query, logger)
         else:
             self.title = args.query
 
@@ -21,12 +23,12 @@ class Query:
         self.conf = args.conf  # type: bool
         self.journal = args.journal  # type: bool
 
-
-    def extract_title_from_pdf(self, path: str, logger: logging.Logger) -> Optional[str]:
+    def extract_title_from_pdf(self, path: str,
+                               logger: logging.Logger) -> Optional[str]:
         if not os.path.isfile(path):
             raise NoFileExistsError(path)
 
-        f: BinaryIO  = open(path, 'rb')
+        f: BinaryIO = open(path, 'rb')
         logger.info("Parsing pdf: " + path)
         info = PdfFileReader(f, strict=False).getDocumentInfo()
 
@@ -36,6 +38,10 @@ class Query:
         logger.info("Extracted title: " + info.title)
         return info.title
 
+    @property
+    def url(self) -> str:
+        return ("http://dblp.org/search/publ/api?q="
+                + urllib.parse.quote(str(self)))
 
     def __str__(self) -> str:
         if self.title is None:

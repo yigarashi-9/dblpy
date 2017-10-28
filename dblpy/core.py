@@ -1,40 +1,54 @@
 import argparse
 import logging
-import os
 import sys
-from typing import cast, List, Optional
-import urllib.parse
+from typing import List
 
-from lxml import etree, html  # type: ignore
+from lxml import etree
+from lxml import html  # type: ignore
 import pyperclip  # type: ignore
 import requests
 
-from .exceptions import *
-from .query import Query
+from .exceptions import DownloadError, NoFileExistsError
+from .query import DblpQuery
 
 
 def download(url: str, logger: logging.Logger) -> str:
     try:
         logger.info("Sending a request: " + url)
-        return requests.get(url).text
-    except:
-        raise HttpGetError(url)
+        r = requests.get(url)
+        r.raise_for_status()
+        return r.text
+    except requests.exceptions.HTTPError as e:
+        raise DownloadError(url,
+                            f"{e.response.status_code} {e.response.reason}")
+    except requests.exceptions.ConnectionError:
+        raise DownloadError(url, "Connection Error")
+    except requests.exceptions.Timeout:
+        raise DownloadError(url, "Timeout")
+    except requests.exceptions.TooManyRedirects:
+        raise DownloadError(url, "Too many redirects")
 
 
-def get_bib_page_url(query: Query, logger: logging.Logger) -> Optional[str]:
-    url = "http://dblp.org/search/publ/api?q=" + urllib.parse.quote(str(query))
-    root = etree.fromstring(download(url, logger).encode('utf-8'))
-    node_of_entries = root.xpath("/result/hits")
-
-    if len(node_of_entries) == 0:
-        return None
-
-    return node_of_entries[0].xpath("hit/info/url")[0].text.replace("rec", "rec/bibtex", 1)
+def download_article_entries(url: str,
+                             logger: logging.Logger) -> List[etree._Element]:
+    root: etree._Element = etree.fromstring(
+        download(url, logger).encode('utf-8'))
+    return root.xpath("/result/hits/hit")
 
 
-def get_bib_text(url: str, logger: logging.Logger) -> str:
+def download_bib_text(url: str, logger: logging.Logger) -> str:
     root = html.fromstring(download(url, logger))
     return root.xpath("//*[@id=\"bibtex-section\"]/pre[1]")[0].text
+
+
+def format_article_entry(entry: etree._Element) -> str:
+    title = entry.xpath("info/title")[0].text
+    venue = entry.xpath("info/venue")[0].text
+    return title + " in " + venue
+
+
+def get_bib_page_url(entry: etree._Element) -> str:
+    return entry.xpath("info/url")[0].text.replace("rec", "rec/bibtex", 1)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="interpret query as file path")
     parser.add_argument("-i", "--info", action="store_true",
                         help="display verbose information")
+    parser.add_argument("-n", "--number", type=int, default=5,
+                        help="limit of number of results")
     parser.add_argument("query", type=str)
     refine_group = parser.add_argument_group(title="Refine list")
     refine_group.add_argument("-a", "--author", action="append")
@@ -59,42 +75,81 @@ def build_parser() -> argparse.ArgumentParser:
 def _main() -> int:
     logger: logging.Logger = logging.getLogger(__name__)
     handler: logging.Handler = logging.StreamHandler(stream=sys.stdout)
-    formatter: logging.Formatter = logging.Formatter()
+    formatter: logging.Formatter = logging.Formatter()  # flake8: noqa
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
     parser: argparse.ArgumentParser = build_parser()
-    exit_status : int = 0
+    args: argparse.Namespace = parser.parse_args()
+
+    if args.info:
+        logger.setLevel(logging.INFO)
+        handler.setLevel(logging.INFO)
 
     try:
-        args: argparse.Namespace = parser.parse_args()
+        query: DblpQuery = DblpQuery(args, logger)
+    except NoFileExistsError as e:
+        sys.stderr.write("No such file: " + e.path)
+        return 1
 
-        if args.info:
-            logger.setLevel(logging.INFO)
-            handler.setLevel(logging.INFO)
+    if query.title is None:
+        print("No title info: " + args.query)
+        return 0
 
-        query: Query = Query(args, logger)
+    logger.info("Building a query: " + str(query))
 
-        if query.title is None:
-            print("No title info: " + args.query)
-            return exit_status
+    try:
+        (article_entries: List[etree._Element] =
+         download_article_entries(query.url, logger))
+    except DownloadError as e:
+        sys.stderr.write(str(e))
+        return 1
 
-        logger.info("Building a query: " + str(query))
-        bib_page_url: Optional[str] = get_bib_page_url(query, logger)
+    entries_len = len(article_entries)
 
-        if bib_page_url is None:
-            print("No matches: " + str(query))
-            return exit_status
+    if entries_len == 0:
+        print("No matches: " + str(query))
+        return 0
 
-        bibtext: str = get_bib_text(bib_page_url, logger)
-        pyperclip.copy(bibtext)
-        print("Copied to the clipboard:")
-        print(bibtext)
-    except HttpGetError as err:
-        sys.stderr.write("Failed to access: " + err.url)
-        exit_status = 1
-    except NoFileExistsError as err:
-        sys.stderr.write("No such file: " + err.path)
-        exit_status = 1
+    entry_num_limit = args.number
+    selected_index = 0
 
-    return exit_status
+    if entries_len > 1:
+        print("\nMultiple results:\n")
+        for i in range(min(entry_num_limit, entries_len)):
+            print(f"({str(i)}) {format_article_entry(article_entries[i])}")
+
+        if entries_len > entry_num_limit:
+            print("and more omitted results...")
+
+        while True:
+            print("\nInput an entry index (Ctrl-D to exit):")
+
+            try:
+                s = input("> ")
+            except EOFError:
+                return 1
+
+            try:
+                i = int(s)
+            except ValueError:
+                continue
+
+            if i < 1 or i >= min(entry_num_limit, entries_len):
+                continue
+
+            selected_index = i
+            break
+
+    bib_page_url: str = get_bib_page_url(article_entries[selected_index])
+
+    try:
+        bibtext: str = download_bib_text(bib_page_url, logger)
+    except DownloadError as e:
+        sys.stderr.write(str(e))
+        return 1
+
+    pyperclip.copy(bibtext)
+    print("Copied to the clipboard:")
+    print(bibtext)
+    return 0

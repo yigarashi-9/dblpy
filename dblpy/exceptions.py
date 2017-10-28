@@ -2,9 +2,13 @@ class Error(Exception):
     pass
 
 
-class HttpGetError(Error):
-    def __init__(self, url: str) -> None:
+class DownloadError(Error):
+    def __init__(self, url: str, reason: str) -> None:
         self.url = url
+        self.reason = reason
+
+    def __str__(self) -> str:
+        return f"{self.reason}: {self.url}"
 
 
 class NoFileExistsError(Error):
