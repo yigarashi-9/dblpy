@@ -98,8 +98,7 @@ def _main() -> int:
     logger.info("Building a query: " + str(query))
 
     try:
-        (article_entries: List[etree._Element] =
-         download_article_entries(query.url, logger))
+        article_entries: List[etree._Element] = download_article_entries(query.url, logger)
     except DownloadError as e:
         sys.stderr.write(str(e))
         return 1
