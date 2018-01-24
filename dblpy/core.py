@@ -5,7 +5,6 @@ from typing import List
 
 from lxml import etree
 from lxml import html  # type: ignore
-import pyperclip  # type: ignore
 import requests
 
 from .exceptions import DownloadError, NoFileExistsError
@@ -149,7 +148,5 @@ def _main() -> int:
         sys.stderr.write(str(e))
         return 1
 
-    pyperclip.copy(bibtext)
-    print("Copied to the clipboard:")
     print(bibtext)
     return 0
