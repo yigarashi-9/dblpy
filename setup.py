@@ -17,6 +17,7 @@ setup(name="dblpy",
       install_requires=[
           "lxml>=4.0.0",
           "PyPDF2>=1.26.0",
+          "pyperclip>=1.6.2",
           "requests>=2.18.4"
       ],
       python_requires=">=3.6",

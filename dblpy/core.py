@@ -5,6 +5,7 @@ from typing import List
 
 from lxml import etree
 from lxml import html  # type: ignore
+import pyperclip  # type: ignore
 import requests
 
 from .exceptions import DownloadError, NoFileExistsError
@@ -133,7 +134,7 @@ def _main() -> int:
             except ValueError:
                 continue
 
-            if i < 1 or i >= min(entry_num_limit, entries_len):
+            if i < 0 or i >= min(entry_num_limit, entries_len):
                 continue
 
             selected_index = i
@@ -148,4 +149,5 @@ def _main() -> int:
         return 1
 
     print(bibtext)
+    pyperclip.copy(bibtext)
     return 0
